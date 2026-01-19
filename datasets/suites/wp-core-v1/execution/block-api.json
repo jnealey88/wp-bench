@@ -1,6 +1,6 @@
 {
   "id": "wp-core-execution-v1-block_api",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "metadata": {
     "name": "WordPress Core Execution Tests - Block API",
     "description": "Code generation tasks for WordPress Block API",
@@ -41,6 +41,216 @@
       },
       "judge_config": { "rubric_id": "wp-judge-rubric-v1" },
       "reference_solution": "function wpbp_count_block_types( string $html ): array {\n    $counts     = array();\n    $processor  = new WP_Block_Processor( $html );\n    while ( $block = $processor->extract_full_block_and_advance() ) {\n        $name = $block->block_name;\n        if ( ! $name || $name === 'core/freeform' ) {\n            continue;\n        }\n        $counts[ $name ] = ($counts[ $name ] ?? 0) + 1;\n        if ( ! empty( $block->inner_html ) ) {\n            foreach ( wpbp_count_block_types( $block->inner_html ) as $k => $v ) {\n                $counts[ $k ] = ($counts[ $k ] ?? 0) + $v;\n            }\n        }\n    }\n    return $counts;\n}"
+    },
+    {
+      "id": "e-block-register-001",
+      "category": "block-api",
+      "difficulty": "basic",
+      "prompt": "Register a custom WordPress block called 'wpbench/greeting' using register_block_type(). The block should have the title 'Greeting Block' and be in the 'widgets' category. Use a render_callback that returns '<p class=\"greeting\">Hello, World!</p>'.",
+      "expected_behavior": "The block 'wpbench/greeting' is registered and renders a paragraph with 'Hello, World!'",
+      "requirements": [
+        "Use register_block_type() to register the block",
+        "Block name must be 'wpbench/greeting'",
+        "Block title must be 'Greeting Block'",
+        "Block category must be 'widgets'",
+        "render_callback must return the specified HTML"
+      ],
+      "static_checks": {
+        "required_patterns": [
+          { "pattern": "register_block_type", "description": "Must use register_block_type function", "weight": 1.0 },
+          { "pattern": "wpbench/greeting", "description": "Must use correct block name", "weight": 1.0 },
+          { "pattern": "render_callback", "description": "Must define a render callback", "weight": 0.8 }
+        ]
+      },
+      "runtime_checks": {
+        "assertions": [
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Type_Registry::get_instance(); return $registry->is_registered( 'wpbench/greeting' );",
+            "description": "Block must be registered in the block type registry",
+            "weight": 1.0
+          },
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Type_Registry::get_instance(); $block = $registry->get_registered( 'wpbench/greeting' ); return $block && $block->title === 'Greeting Block';",
+            "description": "Block must have correct title",
+            "weight": 0.5
+          },
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Type_Registry::get_instance(); $block = $registry->get_registered( 'wpbench/greeting' ); return $block && $block->category === 'widgets';",
+            "description": "Block must be in widgets category",
+            "weight": 0.5
+          },
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Type_Registry::get_instance(); $block = $registry->get_registered( 'wpbench/greeting' ); if ( ! $block || ! is_callable( $block->render_callback ) ) { return false; } $output = call_user_func( $block->render_callback, array(), '' ); return strpos( $output, 'Hello, World!' ) !== false;",
+            "description": "Render callback must output 'Hello, World!'",
+            "weight": 1.0
+          }
+        ]
+      },
+      "judge_config": { "rubric_id": "wp-judge-rubric-v1" }
+    },
+    {
+      "id": "e-block-dynamic-001",
+      "category": "block-api",
+      "difficulty": "intermediate",
+      "prompt": "Create a dynamic WordPress block called 'wpbench/user-welcome' that displays a personalized welcome message. The block should show 'Welcome, {display_name}!' for logged-in users and 'Welcome, Guest!' for visitors. Use register_block_type() with a render_callback.",
+      "expected_behavior": "The block renders different content based on user login status",
+      "requirements": [
+        "Use register_block_type() to register the block",
+        "Block name must be 'wpbench/user-welcome'",
+        "Use wp_get_current_user() or is_user_logged_in() to check login status",
+        "Display user's display_name when logged in",
+        "Display 'Guest' when not logged in",
+        "Wrap output in appropriate HTML element"
+      ],
+      "static_checks": {
+        "required_patterns": [
+          { "pattern": "register_block_type", "description": "Must use register_block_type function", "weight": 1.0 },
+          { "pattern": "wpbench/user-welcome", "description": "Must use correct block name", "weight": 1.0 },
+          { "pattern": "render_callback", "description": "Must define a render callback", "weight": 0.8 },
+          { "pattern": "(wp_get_current_user|is_user_logged_in|current_user_can)", "description": "Must check user status", "weight": 0.8 }
+        ]
+      },
+      "runtime_checks": {
+        "assertions": [
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Type_Registry::get_instance(); return $registry->is_registered( 'wpbench/user-welcome' );",
+            "description": "Block must be registered",
+            "weight": 1.0
+          },
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Type_Registry::get_instance(); $block = $registry->get_registered( 'wpbench/user-welcome' ); if ( ! $block || ! is_callable( $block->render_callback ) ) { return false; } wp_set_current_user( 0 ); $output = call_user_func( $block->render_callback, array(), '' ); return stripos( $output, 'Guest' ) !== false;",
+            "description": "Must show 'Guest' for logged-out users",
+            "weight": 1.0
+          },
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Type_Registry::get_instance(); $block = $registry->get_registered( 'wpbench/user-welcome' ); if ( ! $block || ! is_callable( $block->render_callback ) ) { return false; } wp_set_current_user( 1 ); $user = wp_get_current_user(); $output = call_user_func( $block->render_callback, array(), '' ); return stripos( $output, $user->display_name ) !== false || stripos( $output, 'Welcome' ) !== false;",
+            "description": "Must show personalized welcome for logged-in users",
+            "weight": 1.0
+          }
+        ]
+      },
+      "judge_config": { "rubric_id": "wp-judge-rubric-v1" }
+    },
+    {
+      "id": "e-block-attributes-001",
+      "category": "block-api",
+      "difficulty": "intermediate",
+      "prompt": "Register a WordPress block called 'wpbench/card' with three attributes: 'title' (string, default 'Card Title'), 'showBorder' (boolean, default true), and 'items' (array, default empty array). The render_callback should output the title in an h3 tag, add a 'has-border' class to the wrapper div if showBorder is true, and list items in a ul if any exist.",
+      "expected_behavior": "Block renders with attributes controlling title text, border class, and item list",
+      "requirements": [
+        "Use register_block_type() with attributes array",
+        "Define 'title' as string type with default 'Card Title'",
+        "Define 'showBorder' as boolean type with default true",
+        "Define 'items' as array type with default empty array",
+        "render_callback uses attributes to control output",
+        "Add 'has-border' class when showBorder is true"
+      ],
+      "static_checks": {
+        "required_patterns": [
+          { "pattern": "register_block_type", "description": "Must use register_block_type function", "weight": 1.0 },
+          { "pattern": "wpbench/card", "description": "Must use correct block name", "weight": 1.0 },
+          { "pattern": "attributes", "description": "Must define attributes", "weight": 1.0 },
+          { "pattern": "title", "description": "Must have title attribute", "weight": 0.5 },
+          { "pattern": "showBorder", "description": "Must have showBorder attribute", "weight": 0.5 },
+          { "pattern": "items", "description": "Must have items attribute", "weight": 0.5 }
+        ]
+      },
+      "runtime_checks": {
+        "assertions": [
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Type_Registry::get_instance(); return $registry->is_registered( 'wpbench/card' );",
+            "description": "Block must be registered",
+            "weight": 1.0
+          },
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Type_Registry::get_instance(); $block = $registry->get_registered( 'wpbench/card' ); return $block && isset( $block->attributes['title'] ) && $block->attributes['title']['type'] === 'string';",
+            "description": "Must have title attribute of type string",
+            "weight": 0.5
+          },
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Type_Registry::get_instance(); $block = $registry->get_registered( 'wpbench/card' ); return $block && isset( $block->attributes['showBorder'] ) && $block->attributes['showBorder']['type'] === 'boolean';",
+            "description": "Must have showBorder attribute of type boolean",
+            "weight": 0.5
+          },
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Type_Registry::get_instance(); $block = $registry->get_registered( 'wpbench/card' ); return $block && isset( $block->attributes['items'] ) && $block->attributes['items']['type'] === 'array';",
+            "description": "Must have items attribute of type array",
+            "weight": 0.5
+          },
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Type_Registry::get_instance(); $block = $registry->get_registered( 'wpbench/card' ); if ( ! $block || ! is_callable( $block->render_callback ) ) { return false; } $output = call_user_func( $block->render_callback, array( 'title' => 'Test Title', 'showBorder' => true, 'items' => array() ), '' ); return strpos( $output, 'Test Title' ) !== false && strpos( $output, 'has-border' ) !== false;",
+            "description": "Render callback must use attributes correctly",
+            "weight": 1.0
+          }
+        ]
+      },
+      "judge_config": { "rubric_id": "wp-judge-rubric-v1" }
+    },
+    {
+      "id": "e-block-pattern-001",
+      "category": "block-api",
+      "difficulty": "hard",
+      "prompt": "Register a WordPress block pattern called 'wpbench/hero-section' with the title 'Hero Section'. The pattern should contain a Cover block with an inner Heading block (level 1, text 'Welcome to Our Site') and a Paragraph block (text 'Discover amazing content'). Set the pattern category to 'featured'.",
+      "expected_behavior": "Block pattern is registered and contains properly structured nested blocks",
+      "requirements": [
+        "Use register_block_pattern() to register the pattern",
+        "Pattern name must be 'wpbench/hero-section'",
+        "Pattern title must be 'Hero Section'",
+        "Pattern must be in 'featured' category",
+        "Content must include core/cover block",
+        "Content must include core/heading block with level 1",
+        "Content must include core/paragraph block"
+      ],
+      "static_checks": {
+        "required_patterns": [
+          { "pattern": "register_block_pattern", "description": "Must use register_block_pattern function", "weight": 1.0 },
+          { "pattern": "wpbench/hero-section", "description": "Must use correct pattern name", "weight": 1.0 },
+          { "pattern": "wp:cover", "description": "Must include Cover block", "weight": 0.8 },
+          { "pattern": "wp:heading", "description": "Must include Heading block", "weight": 0.8 },
+          { "pattern": "wp:paragraph", "description": "Must include Paragraph block", "weight": 0.8 }
+        ]
+      },
+      "runtime_checks": {
+        "assertions": [
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Patterns_Registry::get_instance(); return $registry->is_registered( 'wpbench/hero-section' );",
+            "description": "Pattern must be registered",
+            "weight": 1.0
+          },
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Patterns_Registry::get_instance(); $pattern = $registry->get_registered( 'wpbench/hero-section' ); return $pattern && $pattern['title'] === 'Hero Section';",
+            "description": "Pattern must have correct title",
+            "weight": 0.5
+          },
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Patterns_Registry::get_instance(); $pattern = $registry->get_registered( 'wpbench/hero-section' ); return $pattern && in_array( 'featured', (array) $pattern['categories'], true );",
+            "description": "Pattern must be in featured category",
+            "weight": 0.5
+          },
+          {
+            "type": "custom_assertion",
+            "code": "$registry = WP_Block_Patterns_Registry::get_instance(); $pattern = $registry->get_registered( 'wpbench/hero-section' ); if ( ! $pattern || empty( $pattern['content'] ) ) { return false; } $content = $pattern['content']; return strpos( $content, 'wp:cover' ) !== false && strpos( $content, 'wp:heading' ) !== false && strpos( $content, 'wp:paragraph' ) !== false;",
+            "description": "Pattern content must include required blocks",
+            "weight": 1.0
+          }
+        ]
+      },
+      "judge_config": { "rubric_id": "wp-judge-rubric-v1" }
     }
   ]
 }

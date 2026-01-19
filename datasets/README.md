@@ -70,6 +70,38 @@ dataset:
 | `runtime_checks` | object | Assertions to run in WordPress environment |
 | `reference_solution` | string | Example correct solution |
 
+#### Runtime Checks Schema
+
+The `runtime_checks` object supports the following fields:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `setup` | string | PHP code to run before the generated code |
+| `teardown` | string | PHP code to run after assertions |
+| `fire_hooks` | array | WordPress hooks to fire after code execution |
+| `assertions` | array | List of assertion objects to verify behavior |
+
+##### fire_hooks
+
+The `fire_hooks` field allows tests to trigger WordPress action hooks after the generated code has been executed. This is useful for testing code that registers callbacks (e.g., block registration on `init`).
+
+```json
+{
+  "runtime_checks": {
+    "fire_hooks": ["init", "wp_loaded"],
+    "assertions": [...]
+  }
+}
+```
+
+**Use cases:**
+
+- Testing `add_action('init', ...)` callbacks by firing `init` after code execution
+- Testing block registration that depends on WordPress being initialized
+- Testing any hook-dependent functionality
+
+**Note:** Hooks are fired in the order specified in the array.
+
 ### Knowledge Tests
 | Field | Type | Description |
 |-------|------|-------------|

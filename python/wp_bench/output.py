@@ -84,15 +84,23 @@ def print_comparison_table(results: Dict[str, Dict[str, Any]]) -> None:
     table.add_column("Correctness", justify="right")
     table.add_column("Quality", justify="right")
     table.add_column("Overall", justify="right", style="bold")
+    table.add_column("Tokens", justify="right")
+    table.add_column("Cost", justify="right")
 
     for model_name, result in results.items():
         scores = result["scores"]
+        usage = result.get("usage", {})
+        total_tokens = usage.get("total_tokens", 0)
+        cost = usage.get("estimated_cost_usd")
+        cost_str = f"${cost:.4f}" if cost is not None else "N/A"
         table.add_row(
             model_name,
             f"{scores['knowledge']*100:.1f}%",
             f"{scores['correctness']*100:.1f}%",
             f"{scores['quality']*100:.1f}%" if scores["quality"] else "N/A",
             f"{scores['overall']*100:.1f}%",
+            f"{total_tokens:,}",
+            cost_str,
         )
 
     console.print(table)

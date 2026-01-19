@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import threading
+import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -22,7 +23,7 @@ from .output import (
     print_results_path,
     print_test_error,
 )
-from .scoring import ScoreAggregator
+from .scoring import ScoreAggregator, TokenUsage, UsageAggregator
 from .utils import ensure_dir, sha256, strip_code_fences
 
 
@@ -60,6 +61,7 @@ class BenchmarkRunner:
         self.model = ModelInterface(config.model)
         self.environment = WordPressEnvironment(config.grader)
         self.aggregator = ScoreAggregator()
+        self.usage_aggregator = UsageAggregator()
         self.records: List[Dict[str, Any]] = []
         self._lock = threading.Lock()
 
@@ -77,6 +79,7 @@ class BenchmarkRunner:
         """
         tests = load_tests(self.config.dataset)
         self.environment.setup()
+        benchmark_start = time.perf_counter()
         try:
             self._run_knowledge_tests(tests["knowledge"])
             self._run_execution_tests(tests["execution"])
@@ -86,7 +89,9 @@ class BenchmarkRunner:
         except KeyboardInterrupt:
             print_abort_message()
             raise SystemExit(130) from None
+        total_duration_s = time.perf_counter() - benchmark_start
         summary = self.aggregator.finalize()
+        usage_summary = self.usage_aggregator.finalize()
         payload = {
             "metadata": {
                 "suite": self.config.run.suite,
@@ -99,6 +104,10 @@ class BenchmarkRunner:
                     "quality": summary.quality,
                     "overall": summary.overall(),
                 },
+                "timing": {
+                    "total_duration_s": round(total_duration_s, 2),
+                },
+                "usage": usage_summary.to_dict(),
             },
             "results": self.records,
         }
@@ -124,7 +133,10 @@ class BenchmarkRunner:
         def process_test(test: KnowledgeTest) -> Dict[str, Any]:
             try:
                 prompt = self._render_knowledge_prompt(test)
-                answer = strip_code_fences(self.model.generate(prompt)).strip()
+                model_start = time.perf_counter()
+                result = self.model.generate(prompt)
+                model_duration_ms = (time.perf_counter() - model_start) * 1000
+                answer = strip_code_fences(result.text).strip()
                 correct = 1.0 if (test.correct_answer and answer.upper().startswith(test.correct_answer)) else 0.0
                 return {
                     "test_id": test.id,
@@ -133,6 +145,15 @@ class BenchmarkRunner:
                     "answer": answer,
                     "correct": bool(correct),
                     "score": correct,
+                    "timing": {
+                        "model_inference_ms": round(model_duration_ms, 2),
+                    },
+                    "usage": {
+                        "prompt_tokens": result.prompt_tokens,
+                        "completion_tokens": result.completion_tokens,
+                        "total_tokens": result.total_tokens,
+                        "cost_usd": result.cost_usd,
+                    },
                 }
             except Exception as e:
                 raise TestError(test.id, "knowledge", e) from e
@@ -146,6 +167,15 @@ class BenchmarkRunner:
                         result = future.result()
                         with self._lock:
                             self.aggregator.add_knowledge(result["score"])
+                            usage_data = result.get("usage", {})
+                            self.usage_aggregator.add(
+                                TokenUsage(
+                                    prompt_tokens=usage_data.get("prompt_tokens", 0),
+                                    completion_tokens=usage_data.get("completion_tokens", 0),
+                                    total_tokens=usage_data.get("total_tokens", 0),
+                                ),
+                                usage_data.get("cost_usd"),
+                            )
                             self.records.append(result)
                         progress.update(task, advance=1)
                     except TestError:
@@ -173,16 +203,20 @@ class BenchmarkRunner:
             """Process a single execution test (runs in thread pool)."""
             try:
                 prompt = self._render_execution_prompt(test)
-                completion = self.model.generate(prompt)
-                code = strip_code_fences(completion)
+                model_start = time.perf_counter()
+                gen_result = self.model.generate(prompt)
+                model_duration_ms = (time.perf_counter() - model_start) * 1000
+                code = strip_code_fences(gen_result.text)
                 verification_spec = {
                     "static_checks": test.static_checks,
                     "runtime_checks": test.runtime_checks,
                     "judge_config": test.judge_config,
                 }
+                exec_start = time.perf_counter()
                 env_result = self.environment.execute_code(code, verification_spec)
+                exec_duration_ms = (time.perf_counter() - exec_start) * 1000
                 correctness = self._score_assertions(env_result.raw)
-                quality = env_result.raw.get("quality", {}).get("score") if env_result.raw else None
+                quality = env_result.raw.get("static", {}).get("score") if env_result.raw else None
                 return {
                     "test_id": test.id,
                     "type": "execution",
@@ -193,6 +227,16 @@ class BenchmarkRunner:
                     "stderr": env_result.stderr,
                     "correctness": correctness,
                     "quality": quality,
+                    "timing": {
+                        "model_inference_ms": round(model_duration_ms, 2),
+                        "environment_execution_ms": round(exec_duration_ms, 2),
+                    },
+                    "usage": {
+                        "prompt_tokens": gen_result.prompt_tokens,
+                        "completion_tokens": gen_result.completion_tokens,
+                        "total_tokens": gen_result.total_tokens,
+                        "cost_usd": gen_result.cost_usd,
+                    },
                 }
             except Exception as e:
                 raise TestError(test.id, "execution", e) from e
@@ -206,6 +250,15 @@ class BenchmarkRunner:
                         result = future.result()
                         with self._lock:
                             self.aggregator.add_execution(result["correctness"], result["quality"])
+                            usage_data = result.get("usage", {})
+                            self.usage_aggregator.add(
+                                TokenUsage(
+                                    prompt_tokens=usage_data.get("prompt_tokens", 0),
+                                    completion_tokens=usage_data.get("completion_tokens", 0),
+                                    total_tokens=usage_data.get("total_tokens", 0),
+                                ),
+                                usage_data.get("cost_usd"),
+                            )
                             self.records.append(result)
                         progress.update(task, advance=1)
                     except TestError:
@@ -316,6 +369,7 @@ class MultiModelRunner:
         models = self.config.get_models()
         tests = load_tests(self.config.dataset)
         self.environment.setup()
+        benchmark_start = time.perf_counter()
 
         try:
             for model_config in models:
@@ -337,22 +391,53 @@ class MultiModelRunner:
             print_abort_message()
             raise SystemExit(130) from None
 
+        self.total_duration_s = time.perf_counter() - benchmark_start
         print_comparison_table(self.results)
         self._write_outputs()
         return self.results
 
     def _write_outputs(self) -> None:
         """Write combined results to output files."""
+        # Aggregate usage across all models
+        total_usage = {
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "total_tokens": 0,
+            "estimated_cost_usd": 0.0,
+            "num_calls": 0,
+        }
+        has_cost = True
+
+        for result in self.results.values():
+            usage = result.get("usage", {})
+            total_usage["prompt_tokens"] += usage.get("prompt_tokens", 0)
+            total_usage["completion_tokens"] += usage.get("completion_tokens", 0)
+            total_usage["total_tokens"] += usage.get("total_tokens", 0)
+            total_usage["num_calls"] += usage.get("num_calls", 0)
+            if usage.get("estimated_cost_usd") is not None:
+                total_usage["estimated_cost_usd"] += usage["estimated_cost_usd"]
+            else:
+                has_cost = False
+
+        if not has_cost:
+            total_usage["estimated_cost_usd"] = None
+
         payload = {
             "metadata": {
                 "suite": self.config.run.suite,
                 "grader": self.config.grader.model_dump(mode="json"),
                 "dataset": self.config.dataset.model_dump(mode="json"),
+                "timing": {
+                    "total_duration_s": round(self.total_duration_s, 2),
+                },
+                "usage": total_usage,
             },
             "models": {
                 name: {
                     "config": result["model_config"],
                     "scores": result["scores"],
+                    "timing": result.get("timing", {}),
+                    "usage": result.get("usage", {}),
                     "results": result["results"],
                 }
                 for name, result in self.results.items()
@@ -392,6 +477,7 @@ class SingleModelRunner:
         self.environment = environment
         self.tests = tests
         self.aggregator = ScoreAggregator()
+        self.usage_aggregator = UsageAggregator()
         self.records: List[Dict[str, Any]] = []
         self._lock = threading.Lock()
 
@@ -401,9 +487,12 @@ class SingleModelRunner:
         Returns:
             Dict with model config, aggregate scores, and individual results.
         """
+        benchmark_start = time.perf_counter()
         self._run_knowledge_tests(self.tests["knowledge"])
         self._run_execution_tests(self.tests["execution"])
+        total_duration_s = time.perf_counter() - benchmark_start
         summary = self.aggregator.finalize()
+        usage_summary = self.usage_aggregator.finalize()
         return {
             "model_config": self.model_config.model_dump(mode="json"),
             "scores": {
@@ -412,6 +501,10 @@ class SingleModelRunner:
                 "quality": summary.quality,
                 "overall": summary.overall(),
             },
+            "timing": {
+                "total_duration_s": round(total_duration_s, 2),
+            },
+            "usage": usage_summary.to_dict(),
             "results": self.records,
         }
 
@@ -424,7 +517,10 @@ class SingleModelRunner:
         def process_test(test: KnowledgeTest) -> Dict[str, Any]:
             try:
                 prompt = BenchmarkRunner._render_knowledge_prompt(test)
-                answer = strip_code_fences(self.model.generate(prompt)).strip()
+                model_start = time.perf_counter()
+                result = self.model.generate(prompt)
+                model_duration_ms = (time.perf_counter() - model_start) * 1000
+                answer = strip_code_fences(result.text).strip()
                 correct = 1.0 if (test.correct_answer and answer.upper().startswith(test.correct_answer)) else 0.0
                 return {
                     "test_id": test.id,
@@ -432,6 +528,15 @@ class SingleModelRunner:
                     "answer": answer,
                     "correct": bool(correct),
                     "score": correct,
+                    "timing": {
+                        "model_inference_ms": round(model_duration_ms, 2),
+                    },
+                    "usage": {
+                        "prompt_tokens": result.prompt_tokens,
+                        "completion_tokens": result.completion_tokens,
+                        "total_tokens": result.total_tokens,
+                        "cost_usd": result.cost_usd,
+                    },
                 }
             except Exception as e:
                 raise TestError(test.id, "knowledge", e) from e
@@ -445,6 +550,15 @@ class SingleModelRunner:
                         result = future.result()
                         with self._lock:
                             self.aggregator.add_knowledge(result["score"])
+                            usage_data = result.get("usage", {})
+                            self.usage_aggregator.add(
+                                TokenUsage(
+                                    prompt_tokens=usage_data.get("prompt_tokens", 0),
+                                    completion_tokens=usage_data.get("completion_tokens", 0),
+                                    total_tokens=usage_data.get("total_tokens", 0),
+                                ),
+                                usage_data.get("cost_usd"),
+                            )
                             self.records.append(result)
                         progress.update(task, advance=1)
                     except TestError:
@@ -461,22 +575,36 @@ class SingleModelRunner:
         def process_test(test: ExecutionTest) -> Dict[str, Any]:
             try:
                 prompt = BenchmarkRunner._render_execution_prompt(test)
-                completion = self.model.generate(prompt)
-                code = strip_code_fences(completion)
+                model_start = time.perf_counter()
+                gen_result = self.model.generate(prompt)
+                model_duration_ms = (time.perf_counter() - model_start) * 1000
+                code = strip_code_fences(gen_result.text)
                 verification_spec = {
                     "static_checks": test.static_checks,
                     "runtime_checks": test.runtime_checks,
                     "judge_config": test.judge_config,
                 }
+                exec_start = time.perf_counter()
                 env_result = self.environment.execute_code(code, verification_spec)
+                exec_duration_ms = (time.perf_counter() - exec_start) * 1000
                 correctness = BenchmarkRunner._score_assertions(env_result.raw)
-                quality = env_result.raw.get("quality", {}).get("score") if env_result.raw else None
+                quality = env_result.raw.get("static", {}).get("score") if env_result.raw else None
                 return {
                     "test_id": test.id,
                     "type": "execution",
                     "code": code,
                     "correctness": correctness,
                     "quality": quality,
+                    "timing": {
+                        "model_inference_ms": round(model_duration_ms, 2),
+                        "environment_execution_ms": round(exec_duration_ms, 2),
+                    },
+                    "usage": {
+                        "prompt_tokens": gen_result.prompt_tokens,
+                        "completion_tokens": gen_result.completion_tokens,
+                        "total_tokens": gen_result.total_tokens,
+                        "cost_usd": gen_result.cost_usd,
+                    },
                 }
             except Exception as e:
                 raise TestError(test.id, "execution", e) from e
@@ -490,6 +618,15 @@ class SingleModelRunner:
                         result = future.result()
                         with self._lock:
                             self.aggregator.add_execution(result["correctness"], result["quality"])
+                            usage_data = result.get("usage", {})
+                            self.usage_aggregator.add(
+                                TokenUsage(
+                                    prompt_tokens=usage_data.get("prompt_tokens", 0),
+                                    completion_tokens=usage_data.get("completion_tokens", 0),
+                                    total_tokens=usage_data.get("total_tokens", 0),
+                                ),
+                                usage_data.get("cost_usd"),
+                            )
                             self.records.append(result)
                         progress.update(task, advance=1)
                     except TestError:

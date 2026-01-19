@@ -1,6 +1,6 @@
 {
   "id": "wp-core-knowledge-v1-block_api",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "metadata": {
     "name": "WordPress Core Knowledge - Block API",
     "description": "Tests knowledge of WordPress Block API internals",
@@ -39,6 +39,70 @@
       "correct_answer": "B",
       "explanation": "allocate_and_return_parsed_attributes() is the costly, explicitly named method that parses JSON attributes on demand in WP_Block_Processor.",
       "references": ["https://make.wordpress.org/core/2025/11/19/introducing-the-streaming-block-parser-in-wordpress-6-9/"]
+    },
+    {
+      "id": "k-blockjson-schema-001",
+      "category": "block-api",
+      "difficulty": "basic",
+      "prompt": "Which field is the only required field in a block.json file for registering a WordPress block?",
+      "type": "multiple_choice",
+      "choices": [
+        { "key": "A", "text": "title" },
+        { "key": "B", "text": "name" },
+        { "key": "C", "text": "category" },
+        { "key": "D", "text": "version" }
+      ],
+      "correct_answer": "B",
+      "explanation": "The 'name' field is the only required field in block.json. It must be a unique identifier in namespace/block-name format (e.g., 'my-plugin/my-block').",
+      "references": ["https://developer.wordpress.org/block-editor/reference-guides/block-api/block-metadata/"]
+    },
+    {
+      "id": "k-blockjson-attributes-001",
+      "category": "block-api",
+      "difficulty": "intermediate",
+      "prompt": "Which of the following is NOT a valid attribute type in a block.json attributes schema?",
+      "type": "multiple_choice",
+      "choices": [
+        { "key": "A", "text": "string" },
+        { "key": "B", "text": "integer" },
+        { "key": "C", "text": "float" },
+        { "key": "D", "text": "boolean" }
+      ],
+      "correct_answer": "C",
+      "explanation": "Valid attribute types are: null, boolean, object, array, string, integer, and number. There is no 'float' type - use 'number' for floating-point values.",
+      "references": ["https://developer.wordpress.org/block-editor/reference-guides/block-api/block-attributes/"]
+    },
+    {
+      "id": "k-blockjson-supports-001",
+      "category": "block-api",
+      "difficulty": "intermediate",
+      "prompt": "Which block supports property enables text and background color controls in the block editor sidebar?",
+      "type": "multiple_choice",
+      "choices": [
+        { "key": "A", "text": "supports.colorPalette" },
+        { "key": "B", "text": "supports.color" },
+        { "key": "C", "text": "supports.colors" },
+        { "key": "D", "text": "supports.backgroundColor" }
+      ],
+      "correct_answer": "B",
+      "explanation": "The 'supports.color' property enables color controls. It can be set to true for all color options, or configured with sub-properties like 'background', 'text', 'link', and 'gradient'.",
+      "references": ["https://developer.wordpress.org/block-editor/reference-guides/block-api/block-supports/#color"]
+    },
+    {
+      "id": "k-blockjson-render-001",
+      "category": "block-api",
+      "difficulty": "hard",
+      "prompt": "In block.json, what is the correct property name to specify a PHP file for server-side rendering of a dynamic block?",
+      "type": "multiple_choice",
+      "choices": [
+        { "key": "A", "text": "renderCallback" },
+        { "key": "B", "text": "render_callback" },
+        { "key": "C", "text": "render" },
+        { "key": "D", "text": "serverSideRender" }
+      ],
+      "correct_answer": "C",
+      "explanation": "The 'render' property in block.json specifies a PHP file path (e.g., 'file:./render.php') for server-side rendering. Note: 'render_callback' is used in register_block_type() PHP function, not in block.json.",
+      "references": ["https://developer.wordpress.org/block-editor/reference-guides/block-api/block-metadata/#render"]
     }
   ]
 }

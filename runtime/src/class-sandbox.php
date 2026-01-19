@@ -38,6 +38,7 @@ class Sandbox {
 		$teardown_value = $checks['teardown'] ?? '';
 		$teardown       = is_string( $teardown_value ) ? $teardown_value : '';
 		$assertions     = $checks['assertions'] ?? [];
+		$fire_hooks     = $checks['fire_hooks'] ?? []; // Tests can request specific hooks to fire
 
 		$results       = [];
 		$total_weight  = 0.0;
@@ -58,6 +59,15 @@ class Sandbox {
 
 			// Execute the generated code.
 			$this->safe_eval( $code );
+
+			// Fire WordPress hooks to trigger any registered callbacks (e.g., init for block registration).
+			if ( is_array( $fire_hooks ) ) {
+				foreach ( $fire_hooks as $hook ) {
+					if ( is_string( $hook ) && ! empty( $hook ) ) {
+						do_action( $hook );
+					}
+				}
+			}
 
 			// Run assertions.
 			if ( is_array( $assertions ) ) {
@@ -473,18 +483,30 @@ class Sandbox {
 	/**
 	 * Error handler for recoverable errors.
 	 *
+	 * Only throws for actual errors (E_ERROR, E_WARNING, E_USER_ERROR).
+	 * Ignores notices and deprecation warnings to prevent WordPress core
+	 * notices (like "doing it wrong") from breaking test execution.
+	 *
 	 * @param int    $errno   Error number.
 	 * @param string $errstr  Error message.
 	 * @param string $errfile Error file.
 	 * @param int    $errline Error line.
 	 *
-	 * @return never Function always throws.
+	 * @return bool True if error was handled, false to use default handler.
 	 *
-	 * @throws \ErrorException Always thrown to convert errors to exceptions.
+	 * @throws \ErrorException Thrown for actual errors.
 	 */
-	public function handle_error( int $errno, string $errstr, string $errfile = '', int $errline = 0 ): never {
-		// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- ErrorException params, not output.
-		throw new \ErrorException( $errstr, 0, $errno, $errfile, $errline );
+	public function handle_error( int $errno, string $errstr, string $errfile = '', int $errline = 0 ): bool {
+		// Only throw for actual errors, not notices or deprecations.
+		$throw_errors = E_ERROR | E_WARNING | E_USER_ERROR | E_USER_WARNING | E_RECOVERABLE_ERROR;
+
+		if ( $errno & $throw_errors ) {
+			// phpcs:ignore WordPress.Security.EscapeOutput.ExceptionNotEscaped -- ErrorException params, not output.
+			throw new \ErrorException( $errstr, 0, $errno, $errfile, $errline );
+		}
+
+		// Return true to indicate we handled it (suppresses the error).
+		return true;
 	}
 
 	/**

@@ -37,8 +37,12 @@ def run(
     # Check if multi-model mode
     models = harness_config.get_models()
     if model_name:
-        # Override to single model
-        harness_config.model = ModelConfig(name=model_name)
+        # Override to single model - look for matching model in config first
+        matching_model = next(
+            (m for m in models if m.name == model_name),
+            ModelConfig(name=model_name),  # Fallback to defaults if not found
+        )
+        harness_config.model = matching_model
         harness_config.models = None
         runner = BenchmarkRunner(harness_config)
         result = runner.run()

@@ -10,6 +10,8 @@ models:
   # OpenAI
   - name: gpt-4o
   - name: gpt-4o-mini
+  - name: openai/gpt-5.1-codex
+  - name: openai/gpt-5.1-codex-mini
   # Google Gemini
   - name: gemini/gemini-2.5-pro
   - name: gemini/gemini-2.5-flash

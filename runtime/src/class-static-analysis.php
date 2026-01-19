@@ -207,8 +207,9 @@ class Static_Analysis {
 	 */
 	private function safe_preg_match( string $pattern, string $subject ): bool {
 		// Ensure pattern has delimiters.
+		// Use # as delimiter to avoid conflicts with / in patterns like 'wpbench/greeting'.
 		if ( ! preg_match( '/^[\/\#\~\@\!]/', $pattern ) ) {
-			$pattern = '/' . $pattern . '/';
+			$pattern = '#' . $pattern . '#';
 		}
 
 		// Suppress regex warnings.

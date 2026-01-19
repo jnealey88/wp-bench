@@ -24,6 +24,13 @@ class DatasetConfig(BaseModel):
     cache_dir: Optional[Path] = None
 
 
+class ExtendedThinkingConfig(BaseModel):
+    """Configuration for Claude extended thinking."""
+
+    enabled: bool = True
+    budget_tokens: int = 10000  # Default thinking budget
+
+
 class ModelConfig(BaseModel):
     kind: Literal["openai", "anthropic", "ollama", "openai-compatible"] = "openai"
     name: str = "gpt-4o-mini"
@@ -31,6 +38,8 @@ class ModelConfig(BaseModel):
     max_tokens: Optional[int] = None
     top_p: Optional[float] = None
     request_timeout: float = 300.0
+    reasoning_effort: Optional[Literal["none", "low", "medium", "high", "xhigh"]] = None
+    extended_thinking: Optional[ExtendedThinkingConfig] = None  # For Claude models
 
     @validator("temperature")
     def _clamp_temperature(cls, value: float) -> float:
