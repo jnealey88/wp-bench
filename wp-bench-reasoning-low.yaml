@@ -1,0 +1,21 @@
+# GPT-5.2 with reasoning_effort: low
+dataset:
+  source: local
+  name: wp-core-v1
+
+models:
+  - name: gpt-5.2
+    temperature: 1.0
+    reasoning_effort: low
+
+grader:
+  kind: docker
+  wp_env_dir: ./runtime
+
+run:
+  suite: wp-core-v1
+  concurrency: 2
+
+output:
+  path: output/results-reasoning-low.json
+  jsonl_path: output/results-reasoning-low.jsonl

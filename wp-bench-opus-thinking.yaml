@@ -1,0 +1,23 @@
+# Claude Opus 4.5 with extended thinking
+dataset:
+  source: local
+  name: wp-core-v1
+
+models:
+  - name: anthropic/claude-opus-4-5
+    temperature: 1.0
+    extended_thinking:
+      enabled: true
+      budget_tokens: 16000
+
+grader:
+  kind: docker
+  wp_env_dir: ./runtime
+
+run:
+  suite: wp-core-v1
+  concurrency: 1
+
+output:
+  path: output/results-opus-thinking.json
+  jsonl_path: output/results-opus-thinking.jsonl

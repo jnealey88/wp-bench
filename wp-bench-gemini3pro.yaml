@@ -1,0 +1,19 @@
+# Gemini 3 Pro Preview - concurrency=1 due to 25 req/min limit
+dataset:
+  source: local
+  name: wp-core-v1
+
+models:
+  - name: gemini/gemini-3-pro-preview
+
+grader:
+  kind: docker
+  wp_env_dir: ./runtime
+
+run:
+  suite: wp-core-v1
+  concurrency: 1
+
+output:
+  path: output/results-gemini3pro.json
+  jsonl_path: output/results-gemini3pro.jsonl
