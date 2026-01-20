@@ -1,0 +1,62 @@
+# WP-Bench Configuration
+# API keys loaded from .env file
+
+dataset:
+  source: local
+  name: wp-core-v1
+
+models:
+  # OpenAI GPT-5.2 family - base models
+  - name: gpt-5.2
+  - name: openai/gpt-5-nano
+    temperature: 1.0
+  - name: openai/gpt-5-mini
+    temperature: 1.0
+  - name: openai/gpt-5.1-codex
+  - name: openai/gpt-5.1-codex-mini
+
+  # OpenAI GPT-5.2 with reasoning levels
+  - name: gpt-5.2
+    reasoning_effort: low
+  - name: gpt-5.2
+    reasoning_effort: medium
+  - name: gpt-5.2
+    reasoning_effort: high
+  - name: gpt-5.2
+    reasoning_effort: xhigh
+
+  # OpenAI GPT-5.2-Codex - optimized for coding tasks
+  # NOTE: Codex models use the Responses API which requires special handling
+  # Uncomment when LiteLLM adds full Responses API support
+  # - name: gpt-5.2-codex
+  #   reasoning_effort: medium
+
+  # Google Gemini family
+  - name: gemini/gemini-3-pro-preview      # Best multimodal model
+  - name: gemini/gemini-3-flash-preview    # Balanced speed/intelligence
+  - name: gemini/gemini-2.5-pro            # State-of-the-art reasoning
+  - name: gemini/gemini-2.5-flash          # Best price-performance
+  - name: gemini/gemini-2.5-flash-lite     # Fastest, cost-efficient
+
+  # Anthropic Claude 4.5 family
+  - name: anthropic/claude-sonnet-4-5    # Smart model for complex agents and coding
+  - name: anthropic/claude-haiku-4-5     # Fastest model with near-frontier intelligence
+  - name: anthropic/claude-opus-4-5      # Premium model - maximum intelligence
+
+  # Claude Opus 4.5 with extended thinking
+  - name: anthropic/claude-opus-4-5
+    extended_thinking:
+      enabled: true
+      budget_tokens: 16000
+
+grader:
+  kind: docker
+  wp_env_dir: ./runtime
+
+run:
+  suite: wp-core-v1
+  concurrency: 2  # Lower concurrency to avoid rate limits
+
+output:
+  path: output/results.json
+  jsonl_path: output/results.jsonl
